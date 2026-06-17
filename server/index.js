@@ -1,39 +1,54 @@
-// Import required packages
-const express = require('express');
-const http = require('http');
-const { Server } = require('socket.io');
-const cors = require('cors');
+const express = require('express')
+const http = require('http')
+const { Server } = require('socket.io')
+const cors = require('cors')
 
-// Create express app
-const app = express();
-app.use(cors());
+const app = express()
+app.use(cors())
 
-// Create HTTP server
-const server = http.createServer(app);
-
-// Attach Socket.io to server
+const server = http.createServer(app)
 const io = new Server(server, {
   cors: {
-    origin: "http://localhost:3000",
+    origin: "http://localhost:5173",  // Vite runs here
     methods: ["GET", "POST"]
   }
-});
+})
 
-// Basic route to test server
-app.get('/', (req, res) => {
-  res.send('Server is running!');
-});
+// Track users in rooms
+const roomUsers = {}
 
-// Socket.io connection handler
 io.on('connection', (socket) => {
-  console.log('✅ User connected:', socket.id);
+  console.log('✅ User connected:', socket.id)
+
+  socket.on('join-room', ({ roomId, username }) => {
+    socket.join(roomId)
+    socket.username = username
+    socket.roomId = roomId
+
+    if (!roomUsers[roomId]) roomUsers[roomId] = []
+    roomUsers[roomId].push(username)
+
+    console.log(`${username} joined room: ${roomId}`)
+    socket.to(roomId).emit('user-joined', username)
+  })
+
+  socket.on('send-message', ({ roomId, username, message }) => {
+    socket.to(roomId).emit('receive-message', { username, message })
+    console.log(`${username} in ${roomId}: ${message}`)
+  })
 
   socket.on('disconnect', () => {
-    console.log('❌ User disconnected:', socket.id);
-  });
-});
+    const { username, roomId } = socket
+    if (username && roomId) {
+      if (roomUsers[roomId]) {
+        roomUsers[roomId] = roomUsers[roomId].filter(u => u !== username)
+      }
+      socket.to(roomId).emit('user-left', username)
+      console.log(`${username} left room: ${roomId}`)
+    }
+  })
+})
 
-// Start server on port 5000
 server.listen(8080, () => {
-  console.log('🚀 Server running on http://localhost:8080');
-});
+  console.log('🚀 Server running on http://localhost:8080')
+})

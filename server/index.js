@@ -1,12 +1,11 @@
 require('dotenv').config()
-// Loads .env file so process.env.PORT works
 
 const express    = require('express')
 const http       = require('http')
 const { Server } = require('socket.io')
 const cors       = require('cors')
 const { runCode} = require('./judge0')
-// Import our runCode function
+const { askAI  } = require('./ai')
 
 const app = express()
 app.use(cors())
@@ -20,74 +19,100 @@ const io = new Server(server, {
   }
 })
 
-// Store all room data in memory
 const rooms = {}
 
 io.on('connection', (socket) => {
   console.log('✅ User connected:', socket.id)
 
-  // ─── JOIN ROOM ───────────────────────────────
+  // ─── JOIN ROOM ────────────────────────────
   socket.on('join-room', ({ roomId, username }) => {
-    socket.join(roomId)
-    socket.username = username
-    socket.roomId   = roomId
+  socket.join(roomId)
+  socket.username = username
+  socket.roomId   = roomId
 
-    // Create room if it doesn't exist
-    if (!rooms[roomId]) {
-      rooms[roomId] = {
-        code:     '// Start coding here...\n',
-        language: 'javascript',
-        users:    []
-      }
+  if (!rooms[roomId]) {
+    rooms[roomId] = {
+      code:      '#include <iostream>\nusing namespace std;\n\nint main() {\n    cout << "Hello World!" << endl;\n    return 0;\n}\n',
+      language:  'cpp',
+      users:     [],
+      lastError: ''
     }
+  }
 
-    rooms[roomId].users.push(username)
-    console.log(`${username} joined room: ${roomId}`)
+  rooms[roomId].users.push(username)
+  console.log(`${username} joined room: ${roomId}`)
 
-    // Send current room state to the new user
-    socket.emit('room-state', {
-      code:     rooms[roomId].code,
-      language: rooms[roomId].language
-    })
-
-    // Tell everyone else someone joined
-    socket.to(roomId).emit('user-joined', username)
+  // Send current room state INCLUDING existing users
+  socket.emit('room-state', {
+    code:     rooms[roomId].code,
+    language: rooms[roomId].language,
+    users:    rooms[roomId].users  // ← ADD THIS
   })
 
-  // ─── CODE CHANGE ─────────────────────────────
+  socket.to(roomId).emit('user-joined', username)
+})
+
+  // ─── CODE CHANGE ──────────────────────────
   socket.on('code-change', ({ roomId, code }) => {
     if (rooms[roomId]) rooms[roomId].code = code
     socket.to(roomId).emit('code-update', code)
   })
 
-  // ─── LANGUAGE CHANGE ─────────────────────────
+  // ─── LANGUAGE CHANGE ──────────────────────
   socket.on('language-change', ({ roomId, language }) => {
     if (rooms[roomId]) rooms[roomId].language = language
     socket.to(roomId).emit('language-update', language)
   })
 
-  // ─── RUN CODE ────────────────────────────────
+  // ─── RUN CODE ─────────────────────────────
   socket.on('run-code', async ({ roomId, code, language }) => {
     console.log(`Running ${language} code in room: ${roomId}`)
-
-    // Tell EVERYONE in room (including runner) code is starting
-    // Using io.to not socket.to because runner should see loading too
     io.to(roomId).emit('execution-start')
 
-    // Execute code via Piston
     const result = await runCode(code, language)
 
-    // Send result to EVERYONE in room
+    // Store last error for AI context
+    if (rooms[roomId]) {
+      rooms[roomId].lastError = result.error || ''
+    }
+
     io.to(roomId).emit('execution-result', result)
-    console.log('Execution done. Status:', result.status || result.error)
+    console.log('Execution done. Status:', result.status)
   })
 
-  // ─── CHAT MESSAGE ────────────────────────────
+  // ─── ASK AI ───────────────────────────────
+socket.on('ask-ai', async ({ roomId, username, question, history }) => {
+  console.log(`Cody question from ${username} in room ${roomId}: ${question}`)
+
+  io.to(roomId).emit('ai-thinking', { username })
+
+  const room = rooms[roomId] || {}
+
+  const result = await askAI({
+    question,
+    code:     room.code     || '',
+    language: room.language || 'cpp',
+    error:    room.lastError || '',
+    history:  history       || []
+  })
+
+  io.to(roomId).emit('ai-response', {
+    question,
+    answer:        result.answer || result.error,
+    extractedCode: result.extractedCode || null,
+    username,
+    isError:       !!result.error
+  })
+
+  console.log('Cody response sent to room:', roomId)
+})
+
+  // ─── CHAT MESSAGE ─────────────────────────
   socket.on('send-message', ({ roomId, username, message }) => {
     socket.to(roomId).emit('receive-message', { username, message })
   })
 
-  // ─── DISCONNECT ──────────────────────────────
+  // ─── DISCONNECT ───────────────────────────
   socket.on('disconnect', () => {
     const { username, roomId } = socket
     if (username && roomId) {

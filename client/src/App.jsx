@@ -3,260 +3,477 @@ import { io } from "socket.io-client"
 import Editor from "./Editor"
 import './index.css'
 
-const socket = io("http://localhost:8080")
-
 function App() {
-  const [roomId, setRoomId]       = useState("")
-  const [username, setUsername]   = useState("")
-  const [joined, setJoined]       = useState(false)
-  const [code, setCode]           = useState('// Start coding here...\n')
-  const [language, setLanguage]   = useState("javascript")
-  const [messages, setMessages]   = useState([])
-  const [input, setInput]         = useState("")
-  const [users, setUsers]         = useState([])
-  const [output, setOutput]       = useState(null)
-  const [isRunning, setIsRunning] = useState(false)
-  const messagesEndRef            = useRef(null)
-  const isRemoteUpdate            = useRef(false)
+  const socketRef = useRef(null);
 
-  // Auto scroll chat to bottom
+  if (!socketRef.current) {
+    socketRef.current = io("http://localhost:8080", {
+      reconnectionAttempts: 5,
+    });
+  }
+
+  const socket = socketRef.current;
+
+  const [roomId, setRoomId] = useState("");
+  const [username, setUsername] = useState("");
+  const [joined, setJoined] = useState(false);
+  const [code, setCode] = useState("// Start coding here...\n");
+  const [language, setLanguage] = useState("cpp");
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState("");
+  const [users, setUsers] = useState([]);
+  const [output, setOutput] = useState(null);
+  const [isRunning, setIsRunning] = useState(false);
+  const [activeTab, setActiveTab] = useState("chat");
+  const [aiMessages, setAiMessages] = useState([]);
+  const [aiInput, setAiInput] = useState("");
+  const [aiThinking, setAiThinking] = useState(false);
+  const messagesEndRef = useRef(null);
+  const aiEndRef = useRef(null);
+  const isRemoteUpdate = useRef(false);
+
+  // Auto scroll
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [messages])
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
 
   useEffect(() => {
-    // Get room state when joining
+    aiEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [aiMessages]);
+
+  useEffect(() => {
     socket.on("room-state", ({ code, language }) => {
-      setCode(code)
-      setLanguage(language)
-    })
+      setCode(code);
+      setLanguage(language);
+      setUsers(users || []);
+    });
 
-    // Code changed by another user
     socket.on("code-update", (newCode) => {
-      isRemoteUpdate.current = true
-      setCode(newCode)
-    })
+      isRemoteUpdate.current = true;
+      setCode(newCode);
+    });
 
-    // Language changed by another user
     socket.on("language-update", (newLanguage) => {
-      setLanguage(newLanguage)
-    })
+      setLanguage(newLanguage);
+    });
 
-    // Code execution started
     socket.on("execution-start", () => {
-      setIsRunning(true)
-      setOutput({ waiting: true })
-    })
+      setIsRunning(true);
+      setOutput({ waiting: true });
+    });
 
-    // Code execution finished
     socket.on("execution-result", (result) => {
-      setIsRunning(false)
-      setOutput(result)
-    })
+      setIsRunning(false);
+      setOutput(result);
+    });
 
-    // Chat message from another user
+    // AI is thinking
+    socket.on("ai-thinking", ({ username: asker }) => {
+      setAiThinking(true);
+      setAiMessages((prev) => [
+        ...prev,
+        {
+          type: "thinking",
+          text: `⏳ ${asker} asked Cody🧚🏻‍♂️ — thinking...`,
+        },
+      ]);
+      // Switch to AI tab automatically
+      setActiveTab("ai");
+    });
+
+    // AI responded
+    socket.on(
+      "ai-response",
+      ({ question, answer, extractedCode, username: asker, isError }) => {
+        setAiThinking(false);
+        setAiMessages((prev) => {
+          const filtered = prev.filter((m) => m.type !== "thinking");
+          return [
+            ...filtered,
+            { type: "question", text: `${asker}: ${question}` },
+            {
+              type: isError ? "error" : "answer",
+              text: answer,
+              extractedCode: extractedCode || null, // ← store code
+            },
+          ];
+        });
+      },
+    );
+
     socket.on("receive-message", ({ username, message }) => {
-      setMessages(prev => [...prev, {
-        text: `${username}: ${message}`,
-        type: "other"
-      }])
-    })
+      setMessages((prev) => [
+        ...prev,
+        {
+          text: `${username}: ${message}`,
+          type: "other",
+        },
+      ]);
+    });
 
-    // Someone joined the room
     socket.on("user-joined", (username) => {
-      setUsers(prev => [...prev, username])
-      setMessages(prev => [...prev, {
-        text: `🟢 ${username} joined`,
-        type: "system"
-      }])
-    })
+      setUsers((prev) => [...prev, username]);
+      setMessages((prev) => [
+        ...prev,
+        {
+          text: `🟢 ${username} joined`,
+          type: "system",
+        },
+      ]);
+    });
 
-    // Someone left the room
     socket.on("user-left", (username) => {
-      setUsers(prev => prev.filter(u => u !== username))
-      setMessages(prev => [...prev, {
-        text: `🔴 ${username} left`,
-        type: "system"
-      }])
-    })
+      setUsers((prev) => prev.filter((u) => u !== username));
+      setMessages((prev) => [
+        ...prev,
+        {
+          text: `🔴 ${username} left`,
+          type: "system",
+        },
+      ]);
+    });
 
-    // Cleanup all listeners on unmount
     return () => {
-      socket.off("room-state")
-      socket.off("code-update")
-      socket.off("language-update")
-      socket.off("execution-start")
-      socket.off("execution-result")
-      socket.off("receive-message")
-      socket.off("user-joined")
-      socket.off("user-left")
-    }
-  }, [])
+      socket.off("room-state");
+      socket.off("code-update");
+      socket.off("language-update");
+      socket.off("execution-start");
+      socket.off("execution-result");
+      socket.off("ai-thinking");
+      socket.off("ai-response");
+      socket.off("receive-message");
+      socket.off("user-joined");
+      socket.off("user-left");
+    };
+  }, []);
 
   const joinRoom = () => {
-    if (!roomId.trim() || !username.trim()) return
-    socket.emit("join-room", { roomId, username })
-    setJoined(true)
-    setUsers([username])
-    setMessages([{
-      text: `Welcome to room: ${roomId} 👋`,
-      type: "system"
-    }])
-  }
+    if (!roomId.trim() || !username.trim()) return;
+    socket.emit("join-room", { roomId, username });
+    setJoined(true);
+    setUsers([username]);
+    setMessages([
+      {
+        text: `Welcome to room: ${roomId} 👋`,
+        type: "system",
+      },
+    ]);
+    setAiMessages([
+      {
+        type: "answer",
+        text: "👋 Hi! I'm Cody, your AI coding assistant.\n\nI can do magic with your code and find bugs before they find you.🐞\n\nAsk me anything — 'how to get a gf?👩🏻‍❤️‍💋‍👨🏻', 'what makes you, you🥸?', 'how do I sort a list in Python?😁'",
+      },
+    ]);
+  };
 
   const handleCodeChange = (newCode) => {
     if (isRemoteUpdate.current) {
-      isRemoteUpdate.current = false
-      setCode(newCode)
-      return
+      isRemoteUpdate.current = false;
+      setCode(newCode);
+      return;
     }
-    setCode(newCode)
-    socket.emit("code-change", { roomId, code: newCode })
-  }
+    setCode(newCode);
+    socket.emit("code-change", { roomId, code: newCode });
+  };
 
   const handleLanguageChange = (e) => {
-    const newLanguage = e.target.value
-    setLanguage(newLanguage)
-    socket.emit("language-change", { roomId, language: newLanguage })
-  }
+    const newLanguage = e.target.value;
+    setLanguage(newLanguage);
+    socket.emit("language-change", { roomId, language: newLanguage });
+  };
 
   const handleRunCode = () => {
-    if (isRunning) return
-    // Send code to server for execution
-    socket.emit("run-code", { roomId, code, language })
-  }
+    if (isRunning) return;
+    socket.emit("run-code", { roomId, code, language });
+  };
 
   const sendMessage = () => {
-    if (!input.trim()) return
-    socket.emit("send-message", { roomId, username, message: input })
-    setMessages(prev => [...prev, {
-      text: `You: ${input}`,
-      type: "own"
-    }])
-    setInput("")
-  }
+    if (!input.trim()) return;
+    socket.emit("send-message", { roomId, username, message: input });
+    setMessages((prev) => [
+      ...prev,
+      {
+        text: `You: ${input}`,
+        type: "own",
+      },
+    ]);
+    setInput("");
+  };
+
+  const askAI = () => {
+    if (!aiInput.trim() || aiThinking) return;
+
+    // Build history from previous messages
+    const history = [];
+    aiMessages.forEach((msg) => {
+      if (msg.type === "question") {
+        history.push({
+          role: "user",
+          text: msg.text.split(": ").slice(1).join(": "),
+        });
+      }
+      if (msg.type === "answer") {
+        history.push({ role: "model", text: msg.text });
+      }
+    });
+
+    socket.emit("ask-ai", {
+      roomId,
+      username,
+      question: aiInput,
+      history, // ← send history to server
+    });
+    setAiInput("");
+  };
+
+  const insertCode = (codeToInsert) => {
+    // Replace entire editor content with generated code
+    // Or append below existing code
+    const newCode = code + "\n\n" + codeToInsert;
+    setCode(newCode);
+    socket.emit("code-change", { roomId, code: newCode });
+
+    // Switch to editor view confirmation
+    setMessages((prev) => [
+      ...prev,
+      {
+        text: "✅ Cody inserted code into editor",
+        type: "system",
+      },
+    ]);
+  };
 
   const handleKeyPress = (e) => {
-    if (e.key === "Enter") sendMessage()
-  }
+    if (e.key === "Enter") sendMessage();
+  };
 
-  // Decide what to show in output panel
+  const handleAIKeyPress = (e) => {
+    // Shift+Enter = new line, Enter = send
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      askAI();
+    }
+  };
+
   const renderOutput = () => {
-    if (!output) return (
-      <div className="output-content waiting">
-        Click ▶ Run to execute your code...
-      </div>
-    )
-    if (output.waiting) return (
-      <div className="output-content waiting">
-        ⏳ Running your code...
-      </div>
-    )
-    if (output.error && output.error.length > 0) return (
-      <div className="output-content error">
-        ❌ {output.error}
-      </div>
-    )
+    if (!output)
+      return (
+        <div className="output-content waiting">
+          Click ▶ Run to execute your code...
+        </div>
+      );
+    if (output.waiting)
+      return (
+        <div className="output-content waiting">⏳ Running your code...</div>
+      );
+    if (output.error && output.error.length > 0)
+      return <div className="output-content error">❌ {output.error}</div>;
     return (
       <div className="output-content success">
-        ✅ {output.output || '(No output)'}
+        ✅ {output.output || "(No output)"}
       </div>
-    )
-  }
+    );
+  };
 
-  // ── JOIN SCREEN ──────────────────────────────
+  // ── JOIN SCREEN ──────────────────────────
   if (!joined) {
     return (
       <div className="join-container">
-        <h2>AI Collab Editor 🚀</h2>
-        <input
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          placeholder="Your name"
-        />
-        <input
-          value={roomId}
-          onChange={(e) => setRoomId(e.target.value)}
-          placeholder="Room ID (e.g. room123)"
-          onKeyPress={(e) => e.key === "Enter" && joinRoom()}
-        />
-        <button onClick={joinRoom}>Join Room</button>
+        <div className="join-card">
+          {/* Logo */}
+          <div className="join-logo">
+            <h1>{"</> CodeSync"}</h1>
+            <p>Code, Chat, and Collaborate in real-time with AI</p>
+          </div>
+
+          <hr className="join-divider" />
+
+          {/* Name Input */}
+          <div>
+            <p className="join-label">Your Name</p>
+            <input
+              className="join-input"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="Enter your name"
+            />
+          </div>
+
+          {/* Room Input */}
+          <div>
+            <p className="join-label">Room ID</p>
+            <input
+              className="join-input"
+              value={roomId}
+              onChange={(e) => setRoomId(e.target.value)}
+              placeholder="Enter room ID (e.g. team123)"
+              onKeyPress={(e) => e.key === "Enter" && joinRoom()}
+            />
+          </div>
+
+          {/* Join Button */}
+          <button className="join-button" onClick={joinRoom}>
+            Join Room →
+          </button>
+
+          <hr className="join-divider" />
+
+          {/* Features */}
+          <div className="join-features">
+            <div className="join-feature">
+              <span>⚡</span>
+              Real-time sync
+            </div>
+            <div className="join-feature">
+              <span>🧑🏻‍💻</span>
+              Run code
+            </div>
+            <div className="join-feature">
+              <span>💬</span>
+              Live chat
+            </div>
+            <div className="join-feature">
+              <span>🧚🏻‍♂️</span>
+              Cody AI
+            </div>
+          </div>
+        </div>
       </div>
-    )
+    );
   }
 
-  // ── MAIN SCREEN ──────────────────────────────
+  // ── MAIN SCREEN ──────────────────────────
   return (
     <div className="main-layout">
-
       {/* TOP BAR */}
       <div className="top-bar">
-        <h2>AI Collab Editor 🚀</h2>
+        <h2
+          style={{
+            background: "linear-gradient(135deg, #61dafb, #a78bfa)",
+            WebkitBackgroundClip: "text",
+            WebkitTextFillColor: "transparent",
+            backgroundClip: "text",
+            fontWeight: "800",
+            fontSize: "18px",
+          }}
+        >
+          {"</> CodeSync"}
+        </h2>
         <select value={language} onChange={handleLanguageChange}>
           <option value="javascript">JavaScript</option>
           <option value="python">Python</option>
           <option value="cpp">C++</option>
         </select>
-        <span className="users-online">
-          👥 {users.join(', ')}
-        </span>
+        <span className="users-online">👥 {users.join(", ")}</span>
       </div>
 
-      {/* CONTENT AREA */}
+      {/* CONTENT */}
       <div className="content-area">
-
         {/* LEFT — EDITOR + OUTPUT */}
         <div className="editor-side">
-
-          {/* Code Editor */}
-          <Editor
-            code={code}
-            onChange={handleCodeChange}
-            language={language}
-          />
-
-          {/* Output Panel */}
+          <Editor code={code} onChange={handleCodeChange} language={language} />
           <div className="output-panel">
             <div className="output-header">
               <span>Output</span>
               <button
-                className={`run-button ${isRunning ? 'running' : ''}`}
+                className={`run-button ${isRunning ? "running" : ""}`}
                 onClick={handleRunCode}
                 disabled={isRunning}
               >
-                {isRunning ? '⏳ Running...' : '▶ Run Code'}
+                {isRunning ? "⏳ Running..." : "▶ Run Code"}
               </button>
             </div>
             {renderOutput()}
           </div>
-
         </div>
 
-        {/* RIGHT — CHAT */}
+        {/* RIGHT — CHAT + AI TABS */}
         <div className="chat-side">
-          <div className="chat-header">💬 Chat</div>
-          <div className="chat-box">
-            {messages.map((msg, i) => (
-              <div key={i} className={`message ${msg.type}`}>
-                {msg.text}
-              </div>
-            ))}
-            <div ref={messagesEndRef} />
+          {/* Tabs */}
+          <div className="chat-tabs">
+            <button
+              className={`chat-tab ${activeTab === "chat" ? "active" : ""}`}
+              onClick={() => setActiveTab("chat")}
+            >
+              💬 Chat
+            </button>
+            <button
+              className={`chat-tab ${activeTab === "ai" ? "active" : ""}`}
+              onClick={() => setActiveTab("ai")}
+            >
+              🧚🏻‍♂️ Cody
+            </button>
           </div>
-          <div className="chat-input-area">
-            <input
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyPress={handleKeyPress}
-              placeholder="Type a message..."
-            />
-            <button onClick={sendMessage}>Send</button>
-          </div>
-        </div>
 
+          {/* CHAT TAB */}
+          {activeTab === "chat" && (
+            <>
+              <div className="chat-box">
+                {messages.map((msg, i) => (
+                  <div key={i} className={`message ${msg.type}`}>
+                    {msg.text}
+                  </div>
+                ))}
+                <div ref={messagesEndRef} />
+              </div>
+              <div className="chat-input-area">
+                <input
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyPress={handleKeyPress}
+                  placeholder="Type a message..."
+                />
+                <button onClick={sendMessage}>Send</button>
+              </div>
+            </>
+          )}
+
+          {/* CODY TAB */}
+          {activeTab === "ai" && (
+            <>
+              <div className="ai-box">
+                {aiMessages.map((msg, i) => (
+                  <div key={i} className="ai-message-wrapper">
+                    <div className={`ai-message ${msg.type}`}>{msg.text}</div>
+                    {/* Show insert button if message has code */}
+                    {msg.extractedCode && (
+                      <button
+                        className="insert-code-btn"
+                        onClick={() => insertCode(msg.extractedCode)}
+                      >
+                        ⬆ Insert Code into Editor
+                      </button>
+                    )}
+                  </div>
+                ))}
+                <div ref={aiEndRef} />
+              </div>
+              <div className="ai-input-area">
+                <p className="ai-context-hint">
+                  🔍 Cody can see your current code and errors
+                </p>
+                <textarea
+                  value={aiInput}
+                  onChange={(e) => setAiInput(e.target.value)}
+                  onKeyPress={handleAIKeyPress}
+                  placeholder="Ask Cody anything..."
+                  disabled={aiThinking}
+                />
+                <button
+                  className="ai-send-button"
+                  onClick={askAI}
+                  disabled={aiThinking}
+                >
+                  {aiThinking ? "⏳ Thinking..." : "🧚🏻‍♂️ Ask Cody"}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
       </div>
     </div>
-  )
+  );
 }
 
-export default App
+export default App;
+

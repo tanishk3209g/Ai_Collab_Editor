@@ -31,6 +31,7 @@ function App() {
   const messagesEndRef = useRef(null);
   const aiEndRef = useRef(null);
   const isRemoteUpdate = useRef(false);
+  const [isFixing, setIsFixing] = useState(false);
 
   // Auto scroll
   useEffect(() => {
@@ -101,6 +102,32 @@ function App() {
       },
     );
 
+    socket.on("fix-start", () => {
+  setIsFixing(true)
+  setAiThinking(true)
+  setAiMessages(prev => [...prev, {
+    type: "thinking",
+    text: `⏳ Cody is fixing your code...`
+  }])
+})
+
+socket.on("fix-response", ({ answer, extractedCode }) => {
+  setIsFixing(false)
+  setAiThinking(false)
+  setAiMessages(prev => {
+    const filtered = prev.filter(m => m.type !== "thinking")
+    return [
+      ...filtered,
+      {
+        type: "answer",
+        text: answer,
+        extractedCode: extractedCode || null,
+        isFullReplace: true  // ← marks this as full replacement
+      }
+    ]
+  })
+})
+
     socket.on("receive-message", ({ username, message }) => {
       setMessages((prev) => [
         ...prev,
@@ -144,6 +171,8 @@ function App() {
       socket.off("receive-message");
       socket.off("user-joined");
       socket.off("user-left");
+      socket.off("fix-start")
+      socket.off("fix-response")
     };
   }, []);
 
@@ -186,6 +215,31 @@ function App() {
     if (isRunning) return;
     socket.emit("run-code", { roomId, code, language });
   };
+  const fixMyCode = () => {
+  if (isFixing || aiThinking) return
+  if (!code.trim()) return
+
+  setIsFixing(true)
+  setActiveTab('ai')
+
+  // Build history
+  const history = []
+  aiMessages.forEach(msg => {
+    if (msg.type === 'question') {
+      history.push({ role: 'user',  text: msg.text.split(': ').slice(1).join(': ') })
+    }
+    if (msg.type === 'answer') {
+      history.push({ role: 'model', text: msg.text })
+    }
+  })
+
+  // Send special fix request to server
+  socket.emit("fix-code", {
+    roomId,
+    username,
+    history
+  })
+}
 
   const sendMessage = () => {
     if (!input.trim()) return;
@@ -226,22 +280,39 @@ function App() {
     setAiInput("");
   };
 
-  const insertCode = (codeToInsert) => {
-    // Replace entire editor content with generated code
-    // Or append below existing code
-    const newCode = code + "\n\n" + codeToInsert;
-    setCode(newCode);
-    socket.emit("code-change", { roomId, code: newCode });
+const insertCode = (codeToInsert, isFullReplace = false) => {
+  const cleanCode = codeToInsert
+    .split("\n")
+    .filter((line) => !line.includes("/var/folders"))
+    .filter((line) => !line.trim().startsWith("error:"))
+    .filter((line) => !line.trim().startsWith("note:"))
+    .join("\n")
+    .trim();
 
-    // Switch to editor view confirmation
-    setMessages((prev) => [
-      ...prev,
-      {
-        text: "✅ Cody inserted code into editor",
-        type: "system",
-      },
-    ]);
-  };
+  let newCode;
+  if (isFullReplace) {
+    // Replace entire editor content
+    newCode = cleanCode;
+  } else {
+    // Append below existing code
+    newCode = code + "\n\n" + cleanCode;
+  }
+
+  setCode(newCode);
+  socket.emit("code-change", { roomId, code: newCode });
+
+  setMessages((prev) => [
+    ...prev,
+    {
+      text: isFullReplace
+        ? "✅ Cody replaced your code with fixed version"
+        : "✅ Cody inserted code into editor",
+      type: "system",
+    },
+  ]);
+
+  setActiveTab("chat");
+};
 
   const handleKeyPress = (e) => {
     if (e.key === "Enter") sendMessage();
@@ -375,13 +446,25 @@ function App() {
           <div className="output-panel">
             <div className="output-header">
               <span>Output</span>
-              <button
-                className={`run-button ${isRunning ? "running" : ""}`}
-                onClick={handleRunCode}
-                disabled={isRunning}
-              >
-                {isRunning ? "⏳ Running..." : "▶ Run Code"}
-              </button>
+              <div style={{ display: "flex", gap: "8px" }}>
+                {/* Show Fix button only when there's an error */}
+                {output && output.error && output.error.length > 0 && (
+                  <button
+                    className="fix-button"
+                    onClick={fixMyCode}
+                    disabled={isFixing || aiThinking}
+                  >
+                    {isFixing ? "⏳ Fixing..." : "🔧 Fix My Code"}
+                  </button>
+                )}
+                <button
+                  className={`run-button ${isRunning ? "running" : ""}`}
+                  onClick={handleRunCode}
+                  disabled={isRunning}
+                >
+                  {isRunning ? "⏳ Running..." : "▶ Run Code"}
+                </button>
+              </div>
             </div>
             {renderOutput()}
           </div>
@@ -439,9 +522,13 @@ function App() {
                     {msg.extractedCode && (
                       <button
                         className="insert-code-btn"
-                        onClick={() => insertCode(msg.extractedCode)}
+                        onClick={() =>
+                          insertCode(msg.extractedCode, msg.isFullReplace)
+                        }
                       >
-                        ⬆ Insert Code into Editor
+                        {msg.isFullReplace
+                          ? "⚡ Replace Editor with Fixed Code"
+                          : "⬆ Insert Code into Editor"}
                       </button>
                     )}
                   </div>

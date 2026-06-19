@@ -106,6 +106,31 @@ socket.on('ask-ai', async ({ roomId, username, question, history }) => {
 
   console.log('Cody response sent to room:', roomId)
 })
+// ─── FIX CODE ─────────────────────────────
+socket.on('fix-code', async ({ roomId, username, history }) => {
+  console.log(`Fix code request from ${username} in room ${roomId}`)
+
+  io.to(roomId).emit('fix-start')
+
+  const room = rooms[roomId] || {}
+
+  // Special fix prompt — ask for complete corrected code
+  const result = await askAI({
+    question: `Fix all the errors in my code and return the complete corrected version. Make sure the entire code is correct and ready to run.`,
+    code:     room.code     || '',
+    language: room.language || 'cpp',
+    error:    room.lastError || '',
+    history:  history       || []
+  })
+
+  io.to(roomId).emit('fix-response', {
+    answer:        result.answer || result.error,
+    extractedCode: result.extractedCode || null,
+    isError:       !!result.error
+  })
+
+  console.log('Fix response sent to room:', roomId)
+})
 
   // ─── CHAT MESSAGE ─────────────────────────
   socket.on('send-message', ({ roomId, username, message }) => {

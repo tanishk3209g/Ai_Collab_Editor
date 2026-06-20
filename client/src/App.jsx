@@ -32,6 +32,7 @@ function App() {
   const aiEndRef = useRef(null);
   const isRemoteUpdate = useRef(false);
   const [isFixing, setIsFixing] = useState(false);
+  const [connecting, setConnecting] = useState(false)
 
   // Auto scroll
   useEffect(() => {
@@ -43,7 +44,7 @@ function App() {
   }, [aiMessages]);
 
   useEffect(() => {
-    socket.on("room-state", ({ code, language }) => {
+    socket.on("room-state", ({ code, language, users }) => {
       setCode(code);
       setLanguage(language);
       setUsers(users || []);
@@ -178,9 +179,10 @@ socket.on("fix-response", ({ answer, extractedCode }) => {
 
   const joinRoom = () => {
     if (!roomId.trim() || !username.trim()) return;
+    setConnecting(true);
     socket.emit("join-room", { roomId, username });
     setJoined(true);
-    setUsers([username]);
+    setConnecting(false);
     setMessages([
       {
         text: `Welcome to room: ${roomId} 👋`,
@@ -212,9 +214,13 @@ socket.on("fix-response", ({ answer, extractedCode }) => {
   };
 
   const handleRunCode = () => {
-    if (isRunning) return;
-    socket.emit("run-code", { roomId, code, language });
-  };
+  if (isRunning) return
+  if (!code.trim()) {
+    setOutput({ error: 'No code to run. Write something first!' })
+    return
+  }
+  socket.emit("run-code", { roomId, code, language })
+}
   const fixMyCode = () => {
   if (isFixing || aiThinking) return
   if (!code.trim()) return
@@ -367,6 +373,12 @@ const insertCode = (codeToInsert, isFullReplace = false) => {
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               placeholder="Enter your name"
+              style={{
+                border:
+                  username === "" && connecting
+                    ? "1px solid #f44336"
+                    : "1px solid rgba(97, 218, 251, 0.2)",
+              }}
             />
           </div>
 
@@ -383,8 +395,12 @@ const insertCode = (codeToInsert, isFullReplace = false) => {
           </div>
 
           {/* Join Button */}
-          <button className="join-button" onClick={joinRoom}>
-            Join Room →
+          <button
+            className="join-button"
+            onClick={joinRoom}
+            disabled={connecting}
+          >
+            {connecting ? "Joining..." : "Join Room →"}
           </button>
 
           <hr className="join-divider" />
@@ -436,6 +452,25 @@ const insertCode = (codeToInsert, isFullReplace = false) => {
           <option value="cpp">C++</option>
         </select>
         <span className="users-online">👥 {users.join(", ")}</span>
+      </div>
+      {/* ROOM INFO BAR */}
+      <div
+        style={{
+          padding: "4px 20px",
+          background: "#111",
+          fontSize: "11px",
+          color: "#555",
+          borderBottom: "1px solid #333",
+          display: "flex",
+          justifyContent: "space-between",
+        }}
+      >
+        <span>
+          Room: <span style={{ color: "#61dafb" }}>{roomId}</span>
+        </span>
+        <span>
+          Logged in as: <span style={{ color: "#a78bfa" }}>{username}</span>
+        </span>
       </div>
 
       {/* CONTENT */}
@@ -492,21 +527,48 @@ const insertCode = (codeToInsert, isFullReplace = false) => {
           {activeTab === "chat" && (
             <>
               <div className="chat-box">
-                {messages.map((msg, i) => (
-                  <div key={i} className={`message ${msg.type}`}>
-                    {msg.text}
+                {messages.length === 0 ? (
+                  <div style={{
+                      textAlign: "center",
+                      color: "#555",
+                      fontSize: "13px",
+                      marginTop: "40px",
+                    }}
+                  >
+                    💬 No messages yet. Say hello!
                   </div>
-                ))}
+                ) : (
+                  messages.map((msg, i) => (
+                    <div key={i} className={`message ${msg.type}`}>
+                      {msg.text}
+                    </div>
+                  ))
+                )}
                 <div ref={messagesEndRef} />
               </div>
+
               <div className="chat-input-area">
+
                 <input
+
+                  type="text"
+
                   value={input}
+
                   onChange={(e) => setInput(e.target.value)}
-                  onKeyPress={handleKeyPress}
+
+                  onKeyDown={handleKeyPress}
+
                   placeholder="Type a message..."
+
                 />
-                <button onClick={sendMessage}>Send</button>
+
+                <button onClick={sendMessage}>
+
+                  Send
+
+                </button>
+
               </div>
             </>
           )}

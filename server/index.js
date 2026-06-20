@@ -25,32 +25,35 @@ io.on('connection', (socket) => {
   console.log('✅ User connected:', socket.id)
 
   // ─── JOIN ROOM ────────────────────────────
-  socket.on('join-room', ({ roomId, username }) => {
-  socket.join(roomId)
-  socket.username = username
-  socket.roomId   = roomId
+socket.on("join-room", ({ roomId, username }) => {
+  socket.join(roomId);
+  socket.username = username;
+  socket.roomId = roomId;
 
   if (!rooms[roomId]) {
     rooms[roomId] = {
-      code:      '#include <iostream>\nusing namespace std;\n\nint main() {\n    cout << "Hello World!" << endl;\n    return 0;\n}\n',
-      language:  'cpp',
-      users:     [],
-      lastError: ''
-    }
+      code: '#include <iostream>\nusing namespace std;\n\nint main() {\n    cout << "Hello World!" << endl;\n    return 0;\n}\n',
+      language: "cpp",
+      users: [],
+      lastError: "",
+    };
   }
 
-  rooms[roomId].users.push(username)
-  console.log(`${username} joined room: ${roomId}`)
+  // Prevent duplicate users
+  if (!rooms[roomId].users.includes(username)) {
+    rooms[roomId].users.push(username);
+  }
 
-  // Send current room state INCLUDING existing users
-  socket.emit('room-state', {
-    code:     rooms[roomId].code,
+  console.log(`${username} joined room: ${roomId}`);
+
+  socket.emit("room-state", {
+    code: rooms[roomId].code,
     language: rooms[roomId].language,
-    users:    rooms[roomId].users  // ← ADD THIS
-  })
+    users: rooms[roomId].users,
+  });
 
-  socket.to(roomId).emit('user-joined', username)
-})
+  socket.to(roomId).emit("user-joined", username);
+});
 
   // ─── CODE CHANGE ──────────────────────────
   socket.on('code-change', ({ roomId, code }) => {

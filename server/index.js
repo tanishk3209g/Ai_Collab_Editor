@@ -30,6 +30,25 @@ const io = new Server(server, {
 
 
 const rooms = {}
+// ─── ADMIN ROUTE ──────────────────────────
+app.get('/admin', (req, res) => {
+  const roomData = {}
+
+  Object.keys(rooms).forEach(roomId => {
+    roomData[roomId] = {
+      users:       rooms[roomId].users,
+      userCount:   rooms[roomId].users.length,
+      language:    rooms[roomId].language,
+      codePreview: rooms[roomId].code.substring(0, 100) + '...'
+    }
+  })
+
+  res.json({
+    totalRooms: Object.keys(rooms).length,
+    totalUsers: Object.values(rooms).reduce((sum, r) => sum + r.users.length, 0),
+    rooms: roomData
+  })
+})
 
 io.on('connection', (socket) => {
   console.log('✅ User connected:', socket.id)

@@ -294,32 +294,40 @@ const insertCode = (codeToInsert, isFullReplace = false) => {
     .filter((line) => !line.trim().startsWith("error:"))
     .filter((line) => !line.trim().startsWith("note:"))
     .join("\n")
-    .trim();
+    .trim()
 
-  let newCode;
-  if (isFullReplace) {
-    // Replace entire editor content
-    newCode = cleanCode;
+  // Default template codes — if editor has only this, replace it
+  const defaultCodes = [
+    '// Start coding here...',
+    '#include <iostream>',
+  ]
+
+  const isDefaultCode = defaultCodes.some(d => code.trim().startsWith(d))
+
+  let newCode
+  if (isFullReplace || isDefaultCode) {
+    // Replace entirely
+    newCode = cleanCode
   } else {
     // Append below existing code
-    newCode = code + "\n\n" + cleanCode;
+    newCode = code + "\n\n" + cleanCode
   }
 
-  setCode(newCode);
-  socket.emit("code-change", { roomId, code: newCode });
+  setCode(newCode)
+  socket.emit("code-change", { roomId, code: newCode })
 
   setMessages((prev) => [
     ...prev,
     {
-      text: isFullReplace
-        ? "✅ Cody replaced your code with fixed version"
+      text: isFullReplace || isDefaultCode
+        ? "✅ Cody replaced editor with generated code"
         : "✅ Cody inserted code into editor",
       type: "system",
     },
-  ]);
+  ])
 
-  setActiveTab("chat");
-};
+  setActiveTab("chat")
+}
 
   const handleKeyPress = (e) => {
     if (e.key === "Enter") sendMessage();

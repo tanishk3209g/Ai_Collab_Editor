@@ -4,13 +4,14 @@ import Editor from "./Editor"
 import './index.css'
 
 function App() {
-  const socketRef = useRef(null);
+const socketRef = useRef(null)
 
-  if (!socketRef.current) {
-    socketRef.current = io("http://localhost:8080", {
-      reconnectionAttempts: 5,
-    });
-  }
+if (!socketRef.current) {
+const SERVER_URL = "https://aicollabeditor-production.up.railway.app"  
+socketRef.current = io(SERVER_URL, {
+    reconnectionAttempts: 5
+  })
+}
 
   const socket = socketRef.current;
 

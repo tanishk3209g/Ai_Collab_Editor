@@ -8,16 +8,26 @@ const { runCode} = require('./judge0')
 const { askAI  } = require('./ai')
 
 const app = express()
-app.use(cors())
-app.use(express.json())
+app.use(cors({
+  origin: [
+    "http://localhost:5173",
+    "https://codesync-tanishk.vercel.app",
+    /\.vercel\.app$/
+  ]
+}))
 
 const server = http.createServer(app)
 const io = new Server(server, {
   cors: {
-    origin: "http://localhost:5173",
+    origin: [
+      "http://localhost:5173",
+      "https://codesync-tanishk.vercel.app",
+      /\.vercel\.app$/
+    ],
     methods: ["GET", "POST"]
   }
 })
+
 
 const rooms = {}
 

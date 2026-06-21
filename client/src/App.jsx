@@ -456,6 +456,7 @@ const insertCode = (codeToInsert, isFullReplace = false) => {
       </div>
       {/* ROOM INFO BAR */}
       <div
+        className="room-info"
         style={{
           padding: "4px 20px",
           background: "#111",

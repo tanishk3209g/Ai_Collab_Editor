@@ -562,3 +562,180 @@ body {
   background: #555;
   cursor: not-allowed;
 }
+/* ── MOBILE RESPONSIVE ── */
+@media (max-width: 768px) {
+
+  /* Stack layout vertically on mobile */
+  .main-layout {
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .content-area {
+    flex-direction: column;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* Editor takes 45% of screen */
+  .editor-side {
+    flex: none;
+    height: 45vh;
+    min-height: 0;
+  }
+
+  /* Output panel smaller on mobile */
+  .output-panel {
+    height: 130px;
+  }
+
+  /* Chat takes remaining space */
+  .chat-side {
+    width: 100%;
+    flex: 1;
+    border-left: none;
+    border-top: 1px solid #444;
+    min-height: 0;
+  }
+
+  /* Top bar compact */
+  .top-bar {
+    padding: 8px 12px;
+    gap: 8px;
+  }
+
+  .top-bar h2 {
+    font-size: 14px !important;
+  }
+
+  .top-bar select {
+    padding: 4px 8px;
+    font-size: 12px;
+  }
+
+  .users-online {
+    font-size: 11px;
+    padding: 3px 8px;
+  }
+
+  /* Room info bar compact */
+  .room-info {
+    padding: 3px 12px;
+    font-size: 10px;
+  }
+
+  /* Run button smaller */
+  .run-button {
+    padding: 4px 10px;
+    font-size: 12px;
+  }
+
+  .fix-button {
+    padding: 4px 8px;
+    font-size: 11px;
+  }
+
+  /* Output content smaller */
+  .output-content {
+    font-size: 12px;
+    padding: 6px 10px;
+  }
+
+  /* Chat messages */
+  .message {
+    font-size: 12px;
+    padding: 6px 10px;
+  }
+
+  /* AI messages */
+  .ai-message {
+    font-size: 12px;
+  }
+
+  /* Chat input */
+  .chat-input-area input {
+    font-size: 13px;
+    padding: 8px;
+  }
+
+  .chat-input-area button {
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+
+  /* AI input */
+  .ai-input-area textarea {
+    height: 50px;
+    font-size: 13px;
+  }
+
+  .ai-send-button {
+    padding: 6px;
+    font-size: 12px;
+  }
+
+  /* Join page */
+  .join-card {
+    width: 90%;
+    padding: 24px 20px;
+    margin: 0 auto;
+  }
+
+  .join-logo h1 {
+    font-size: 24px;
+  }
+
+  .join-input {
+    width: 100%;
+    font-size: 16px;
+    /* 16px prevents iOS zoom on focus */
+  }
+
+  .join-button {
+    font-size: 15px;
+    padding: 12px;
+  }
+
+  .join-features {
+    gap: 4px;
+  }
+
+  .join-feature {
+    font-size: 10px;
+  }
+
+  /* Tabs */
+  .chat-tab {
+    font-size: 12px;
+    padding: 8px 4px;
+  }
+
+  /* Insert code button */
+  .insert-code-btn {
+    font-size: 11px;
+    padding: 5px 10px;
+    width: 100%;
+    margin-top: 6px;
+  }
+
+  /* CodeMirror font smaller on mobile */
+  .cm-editor {
+    font-size: 12px !important;
+  }
+}
+
+/* Extra small phones */
+@media (max-width: 380px) {
+  .editor-side {
+    height: 40vh;
+  }
+
+  .output-panel {
+    height: 110px;
+  }
+
+  .join-logo h1 {
+    font-size: 20px;
+  }
+}
